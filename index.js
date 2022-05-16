@@ -16,6 +16,7 @@ if (COLLECTION_SLUG == undefined) {
 
 let STREAM_RESULTS = []
 let API_RESULTS = []
+let BOTH_RESULTS = []
 let firstTime = null
 
 function sleep(ms) {
@@ -34,7 +35,7 @@ const client = new OpenSeaStreamClient({
 
 client.onItemListed(COLLECTION_SLUG, async (event) => {
     if (firstTime == null) {
-        firstTime = Math.floor(new Date(event.payload.event_timestamp).getTime() / 1000) - 10;
+        firstTime = Math.floor(new Date(event.payload.event_timestamp).getTime() / 1000) - 5;
         startPolling()
     }
 
@@ -65,6 +66,11 @@ async function get_listings(after) {
             response.asset_events.forEach((event) => {
                 // check that existing results do not match order id
                 let match = API_RESULTS.find((existing) => existing.event_timestamp == event.event_timestamp)
+                if (match != undefined) {
+                    return
+                }
+                // cursor / time broken so as workaround check previously removed results
+                match = BOTH_RESULTS.find((existing) => existing.event_timestamp == event.event_timestamp)
                 if (match != undefined) {
                     return
                 }
@@ -105,23 +111,26 @@ function* reverseKeys(arr) {
     }
   }
 
-let bothRunningCount = 0
 function compareResults() {
     // removal of matching results between api and websocket
     for (var sidx of reverseKeys(STREAM_RESULTS)) {
         for (var aidx of reverseKeys(API_RESULTS)) {
             if (STREAM_RESULTS[sidx].event_timestamp == API_RESULTS[aidx].event_timestamp) {
                 console.log("MATCH BOTH", STREAM_RESULTS[sidx])
+                BOTH_RESULTS.push(STREAM_RESULTS[sidx])
                 STREAM_RESULTS.splice(sidx, 1);
                 API_RESULTS.splice(aidx, 1);
-                bothRunningCount += 1
                 break
             }
         }
     }
-    console.log(new Date(), STREAM_RESULTS.length, "stream only", API_RESULTS.length, "api only", bothRunningCount, "both")
+    console.log(new Date(), STREAM_RESULTS.length, "stream only", API_RESULTS.length, "api only", BOTH_RESULTS.length, "both")
     // // Uncomment for more info
-    // console.log("STREAM MISSING FROM API", STREAM_RESULTS)
-    // console.log("API MISSING FROM STREAM", API_RESULTS)
-    // console.log("---------")
+    console.log("STREAM MISSING FROM API")
+    STREAM_RESULTS.forEach((x) => console.log(" ", x.event_timestamp, " ", x.permalink))
+    console.log("API MISSING FROM STREAM")
+    API_RESULTS.forEach((x) => console.log(" ", x.event_timestamp, " ", x.permalink))
+    console.log("API AND STREAM")
+    BOTH_RESULTS.forEach((x) => console.log(" ", x.event_timestamp, " ", x.permalink))
+    console.log("---------")
 }
