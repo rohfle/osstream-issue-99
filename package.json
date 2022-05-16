@@ -1,0 +1,18 @@
+{
+  "name": "osstream-issue-99",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@opensea/stream-js": "^0.0.20",
+    "node-fetch": "^3.2.4",
+    "opensea-js": "^3.0.4",
+    "ws": "^8.6.0"
+  }
+}
