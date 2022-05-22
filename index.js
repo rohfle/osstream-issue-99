@@ -17,11 +17,17 @@ if (COLLECTION_SLUG == undefined) {
 let STREAM_RESULTS = []
 let API_RESULTS = []
 let BOTH_RESULTS = []
-let firstTime = null
+let occurredAfter = null
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
+
+function getEpochTimestamp(timestamp) {
+    // use a timestamp if it is given, else use the current time
+    let date = (timestamp) ? new Date(timestamp) : new Date()
+    return Math.floor(date.getTime() / 1000)
+}
 
 // part 1: opensea stream-js client
 const client = new OpenSeaStreamClient({
@@ -34,8 +40,8 @@ const client = new OpenSeaStreamClient({
   });
 
 client.onItemListed(COLLECTION_SLUG, async (event) => {
-    if (firstTime == null) {
-        firstTime = Math.floor(new Date(event.payload.event_timestamp).getTime() / 1000) - 5;
+    if (occurredAfter == null) {
+        occurredAfter = getEpochTimestamp(event.payload.event_timestamp) - 5;
         startPolling()
     }
 
@@ -46,7 +52,7 @@ client.onItemListed(COLLECTION_SLUG, async (event) => {
 });
 
 // part 2: events api polling
-async function get_listings(after) {
+async function get_listings(occurredAfter) {
     const options = {
         method: 'GET',
         headers: {
@@ -55,21 +61,22 @@ async function get_listings(after) {
         }
     };
 
-    while (true) {
+    let nextPage = null
+    do {
         try {
             await sleep(250) // 4 req / s max
-            let url = `https://api.opensea.io/api/v1/events?collection_slug=${COLLECTION_SLUG}&event_type=created&occurred_after=${firstTime}`
-            if (after != null) {
-                url += '&cursor=' + after
+            let url = `https://api.opensea.io/api/v1/events?collection_slug=${COLLECTION_SLUG}&event_type=created&occurred_after=${occurredAfter}`
+            if (nextPage != null) {
+                url += '&cursor=' + nextPage
             }
             let response = await fetch(url, options).then((r) => r.json())
             response.asset_events.forEach((event) => {
-                // check that existing results do not match order id
+                // check for existing results that match the event_timestamp
                 let match = API_RESULTS.find((existing) => existing.event_timestamp == event.event_timestamp)
                 if (match != undefined) {
                     return
                 }
-                // cursor / time broken so as workaround check previously removed results
+                // check previously removed results as well
                 match = BOTH_RESULTS.find((existing) => existing.event_timestamp == event.event_timestamp)
                 if (match != undefined) {
                     return
@@ -79,31 +86,29 @@ async function get_listings(after) {
                     permalink: event.asset.permalink,
                 })
             })
-            if (response.after == null) {
-                break
-            } else {
-                after = response.after
-            }
+            nextPage = response.next
         } catch (err) {
             console.log("API error:", err)
             break
         }
-    }
-    return after
+    } while (nextPage != null)
+    return
 }
 
 function startPolling() {
     let after = null
     setInterval(async () => {
-        after = await get_listings(after)
+        await get_listings(occurredAfter)
+        // keep a 60 second REST API window open for events to show up (when stream api leads rest api)
+        // note this window doesnt make any difference for when events are not showing up in the stream api
+        occurredAfter = Math.max(getEpochTimestamp() - 60, occurredAfter)
         compareResults()
-    }, 5000)
-
-    setInterval(() => {
     }, 5000)
 }
 
 function* reverseKeys(arr) {
+    // indexes an array in reverse
+    // eg if there are 5 items in array, returns 4,3,2,1,0
     var key = arr.length - 1;
     while (key >= 0) {
       yield key;
